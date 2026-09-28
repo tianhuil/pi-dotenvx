@@ -1,7 +1,7 @@
 {
   "name": "pi-dotenvx",
-  "version": "0.2.0",
-  "description": "pi extension guarding dotenvx private-key files (.env.keys): blocks agent access, sanctions redacted cat/ls",
+  "version": "0.3.0",
+  "description": "pi extension guarding dotenvx private-key files (.env.keys): dormant unless dotenvx detected, sanctions redacted cat/ls",
   "type": "module",
   "private": true,
   "license": "MIT",

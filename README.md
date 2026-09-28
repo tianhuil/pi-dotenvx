@@ -72,12 +72,30 @@ cat: .env.keys: No such file or directory
 
 Plain environment files (`.env`, `.env.development`, `.env.test`, `.env.production`, …) are not protected — the agent reads them normally. Only `.env.keys` (and configured dirs like `~/.dotenvx`) is guarded.
 
+### Conditional activation
+
+The guard is dormant unless the project actually uses dotenvx. Detection runs at session start and is re-checked cheaply each turn, so a repo that gains `.env.keys` mid-session wakes the guard immediately. Telltale signs (any one activates):
+
+1. `.env.keys` exists at the repo root
+2. `package.json` references dotenvx — a dependency (`dotenvx`, `@dotenvx/dotenvx`, any `@dotenvx/*`) or any mention in scripts/overrides
+3. An `.env.*` file contains dotenvx-encrypted values (`KEY="encrypted:…"`)
+
+Fail direction is safe: any sign → active. Override in config with `"enabled": true` (always on) or `"enabled": false` (off):
+
+```json
+{ "enabled": "auto" }
+```
+
+Redaction still runs in dormant projects — it is a near-free backstop and only ever matches real key material.
+
 ### Configuration
 
 Optional JSON config, merged with defaults (project wins):
 
 - Global: `dotenvx-guard.json` next to the installed package
 - Project: `<project>/.pi/dotenvx-guard.json`
+
+Supported keys: `enabled` (`"auto"` default, `true`, `false`), `protectedNames`, `protectedDirs`.
 
 ```json
 {

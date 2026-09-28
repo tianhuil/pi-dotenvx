@@ -6,12 +6,14 @@ import {
   bashReferencesProtected,
   DEFAULT_PROTECTED_DIRS,
   DEFAULT_PROTECTED_NAMES,
+  detectDotenvxUsage,
   isProtectedPath,
   isSanctionedCommand,
   redactSecrets,
 } from "./guard.ts";
 
 interface GuardConfig {
+  enabled?: boolean | "auto";
   protectedNames?: string[];
   protectedDirs?: string[];
 }
@@ -23,6 +25,7 @@ function readConfig(filePath: string): GuardConfig {
     if (typeof parsed !== "object" || parsed === null) return {};
     const config = parsed as GuardConfig;
     return {
+      ...(config.enabled !== undefined ? { enabled: config.enabled } : {}),
       ...(Array.isArray(config.protectedNames) ? { protectedNames: config.protectedNames.filter((v): v is string => typeof v === "string") } : {}),
       ...(Array.isArray(config.protectedDirs) ? { protectedDirs: config.protectedDirs.filter((v): v is string => typeof v === "string") } : {}),
     };
@@ -36,6 +39,7 @@ function mergeConfig(cwd: string): Required<GuardConfig> {
   const global = readConfig(path.join(extensionDir, "dotenvx-guard.json"));
   const project = readConfig(path.join(cwd, ".pi", "dotenvx-guard.json"));
   return {
+    enabled: project.enabled ?? global.enabled ?? "auto",
     protectedNames: [...new Set([...DEFAULT_PROTECTED_NAMES, ...(project.protectedNames ?? global.protectedNames ?? [])])],
     protectedDirs: [...new Set([...DEFAULT_PROTECTED_DIRS, ...(project.protectedDirs ?? global.protectedDirs ?? [])])],
   };
@@ -49,7 +53,26 @@ const GUIDANCE = [
 ].join(" ");
 
 export default function (pi: ExtensionAPI) {
+  // Activation state, keyed per working directory. In "auto" mode the guard
+  // is dormant until dotenvx usage is detected; re-checked each turn (cheap
+  // stat-based cache) so a repo gaining .env.keys mid-session wakes it up.
+  const activeByCwd = new Map<string, boolean>();
+
+  async function isActive(ctx: { cwd: string }): Promise<boolean> {
+    const config = mergeConfig(ctx.cwd);
+    if (config.enabled === true) return true;
+    if (config.enabled === false) return false;
+    if (activeByCwd.has(ctx.cwd)) {
+      void detectDotenvxUsage(ctx.cwd).then((detected) => activeByCwd.set(ctx.cwd, detected));
+      return activeByCwd.get(ctx.cwd) ?? false;
+    }
+    const detected = await detectDotenvxUsage(ctx.cwd);
+    activeByCwd.set(ctx.cwd, detected);
+    return detected;
+  }
+
   pi.on("tool_call", async (event, ctx) => {
+    if (!(await isActive(ctx))) return undefined;
     const config = mergeConfig(ctx.cwd);
     if (event.toolName === "read" || event.toolName === "write" || event.toolName === "edit") {
       const filePath = event.input.path;
@@ -70,6 +93,8 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("tool_result", (event) => {
+    // Redaction is a pure backstop and near-free; it runs regardless of
+    // activation so key material never slips through in any project.
     let changed = false;
     const content = event.content.map((item) => {
       if (item.type !== "text") return item;
@@ -81,7 +106,8 @@ export default function (pi: ExtensionAPI) {
     return changed ? { content } : undefined;
   });
 
-  pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n${GUIDANCE}`,
-  }));
+  pi.on("before_agent_start", async (event, ctx) => {
+    if (!(await isActive(ctx))) return undefined;
+    return { systemPrompt: `${event.systemPrompt}\n${GUIDANCE}` };
+  });
 }

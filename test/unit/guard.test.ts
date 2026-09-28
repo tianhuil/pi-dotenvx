@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import {
   bashReferencesProtected,
+  detectDotenvxUsage,
   isProtectedPath,
   isSanctionedCommand,
   redactSecrets,
@@ -167,5 +168,44 @@ describe("sanctioned cat pipeline", () => {
         "",
       ].join("\n"),
     );
+  });
+});
+
+describe("detectDotenvxUsage", () => {
+  test("inactive in a plain directory with no dotenvx signs", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, "README.md"), "hello");
+    await writeFile(path.join(cwd, ".env"), "APP_ENV=development\n");
+    expect(await detectDotenvxUsage(cwd)).toBe(false);
+  });
+
+  test("active when .env.keys exists", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, ".env.keys"), "DOTENV_PRIVATE_KEY_DEVELOPMENT=x\n");
+    expect(await detectDotenvxUsage(cwd)).toBe(true);
+  });
+
+  test("active when package.json depends on dotenvx", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ devDependencies: { "@dotenvx/dotenvx": "^1.0.0" } }));
+    expect(await detectDotenvxUsage(cwd)).toBe(true);
+  });
+
+  test("active when a script mentions dotenvx", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, "package.json"), JSON.stringify({ scripts: { test: "pnpx dotenvx run -f .env.test -- bun test" } }));
+    expect(await detectDotenvxUsage(cwd)).toBe(true);
+  });
+
+  test("active when an env file holds encrypted values", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, ".env.production"), 'API_KEY="encrypted:BEUFMONGODBURI"\n');
+    expect(await detectDotenvxUsage(cwd)).toBe(true);
+  });
+
+  test("plain env values do not trigger detection", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, ".env.production"), "API_KEY=plaintext-not-encrypted\n");
+    expect(await detectDotenvxUsage(cwd)).toBe(false);
   });
 });
