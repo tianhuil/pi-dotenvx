@@ -4,10 +4,10 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   bashReferencesProtected,
-  collectSafeInfo,
   DEFAULT_PROTECTED_DIRS,
   DEFAULT_PROTECTED_NAMES,
   isProtectedPath,
+  isSanctionedCommand,
   redactSecrets,
 } from "./guard.ts";
 
@@ -41,30 +41,28 @@ function mergeConfig(cwd: string): Required<GuardConfig> {
   };
 }
 
-export default function (pi: ExtensionAPI) {
-  pi.registerTool({
-    name: "dotenvx_info",
-    label: "dotenvx safe info",
-    description: "Report safe dotenvx metadata for the current project. Never returns environment values or private-key values.",
-    parameters: { type: "object", properties: {}, additionalProperties: false } as never,
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      const info = await collectSafeInfo(ctx.cwd);
-      return { content: [{ type: "text", text: JSON.stringify(info, null, 2) }], details: {} };
-    },
-  });
+const GUIDANCE = [
+  ".env.keys holds dotenvx private decryption keys and is off-limits.",
+  'The ONLY sanctioned commands are `cat .env.keys` and `ls .env.keys` (exact, no extra arguments) — their output is automatically redacted of key values.',
+  "Never read, print, copy, move, or encode that file any other way.",
+].join(" ");
 
+export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     const config = mergeConfig(ctx.cwd);
     if (event.toolName === "read" || event.toolName === "write" || event.toolName === "edit") {
       const filePath = event.input.path;
       if (typeof filePath === "string" && await isProtectedPath(filePath, ctx.cwd, config.protectedNames, config.protectedDirs)) {
-        return { block: true, reason: `Blocked access to protected dotenvx path. Use dotenvx_info for safe environment metadata.` };
+        return { block: true, reason: `Blocked access to protected dotenvx path. Run "cat .env.keys" or "ls .env.keys" instead — output is redacted of key values.` };
       }
     }
     if (event.toolName === "bash") {
       const command = event.input.command;
-      if (typeof command === "string" && bashReferencesProtected(command, config.protectedNames)) {
-        return { block: true, reason: "Blocked command referencing a protected dotenvx key file. Use dotenvx_info for safe environment metadata." };
+      if (typeof command === "string") {
+        if (isSanctionedCommand(command)) return undefined;
+        if (bashReferencesProtected(command, config.protectedNames)) {
+          return { block: true, reason: `Blocked command referencing a protected dotenvx key file. Run "cat .env.keys" or "ls .env.keys" instead — output is redacted of key values.` };
+        }
       }
     }
     return undefined;
@@ -83,6 +81,6 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", (event) => ({
-    systemPrompt: `${event.systemPrompt}\n.env.keys is off-limits; never read, print, or copy it. Use the dotenvx_info tool for dotenvx environment questions.`,
+    systemPrompt: `${event.systemPrompt}\n${GUIDANCE}`,
   }));
 }

@@ -42,8 +42,6 @@ const args = [
   "--no-context-files",
   "--offline",
   "--extension", extensionEntry,
-  // Keep the custom tool enabled without making any model/API call.
-  "--tools", "dotenvx_info",
 ];
 const frames: Record<string, unknown>[] = [];
 let stdoutBuffer = "";
@@ -118,18 +116,28 @@ try {
   const commandsResponse = frames.find((frame) => frame.type === "response" && frame.id === "smoke-commands");
   assert(commandsResponse?.success === true, `RPC get_commands failed: ${JSON.stringify(commandsResponse ?? frames)}`);
 
-  // rpc.md documents get_commands, while custom tools are available through
-  // ExtensionAPI.getAllTools(). The smoke probe checks that runtime list and
-  // only then exposes this marker command through the documented RPC frame.
+  // The smoke probe runs the live guard logic inside pi and exposes the
+  // result through a marker command surfaced by the documented get_commands
+  // RPC frame. Assert the extension's behavior, not just its presence.
   const commands = commandsResponse.data && typeof commandsResponse.data === "object"
     ? (commandsResponse.data as { commands?: unknown }).commands
     : undefined;
-  const registrationMarker = Array.isArray(commands)
-    ? commands.find((command) => typeof command === "object" && command !== null && (command as { name?: unknown }).name === "dotenvx-info-smoke") as { description?: unknown } | undefined
+  const marker = Array.isArray(commands)
+    ? commands.find((command) => typeof command === "object" && command !== null && (command as { name?: unknown }).name === "dotenvx-guard-smoke") as { description?: unknown } | undefined
     : undefined;
-  assert(typeof registrationMarker?.description === "string" && registrationMarker.description.includes("dotenvx_info"),
-    `Pi did not expose dotenvx_info in runtime tool list: ${JSON.stringify(commandsResponse)}`);
-  console.log("PASS: pi RPC runtime tool list contained dotenvx_info");
+  const description = typeof marker?.description === "string" ? marker.description : "";
+  const expected = [
+    '"sanctionedCat":true',
+    '"sanctionedLs":true',
+    '"sneakyExtraArg":false',
+    '"blockedGlob":true',
+    '"blockedRead":true',
+    '"redaction":"DOTENV_PRIVATE_KEY_PRODUCTION=[redacted]"',
+  ];
+  for (const fragment of expected) {
+    assert(description.includes(fragment), `Guard probe missing ${fragment}: ${description || JSON.stringify(commandsResponse)}`);
+  }
+  console.log("PASS: pi RPC loaded dotenvx-guard with sanctioned commands, gate, and redaction live");
   console.log(`Pi binary: ${piBinary}`);
   console.log(`Pi args: ${args.join(" ")}`);
 } finally {

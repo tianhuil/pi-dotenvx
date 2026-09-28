@@ -4,7 +4,7 @@
 [![Runtime: Bun](https://img.shields.io/badge/runtime-bun-orange?logo=bun)](https://bun.sh)
 [![CI](https://github.com/tianhuil/pi-dotenvx/actions/workflows/ci.yml/badge.svg)](https://github.com/tianhuil/pi-dotenvx/actions/workflows/ci.yml)
 
-A [pi](https://github.com/earendil-works/pi-coding-agent) extension that keeps the coding agent away from [dotenvx](https://dotenvx.com) private-key files (`.env.keys`) and gives it one safe, dedicated tool for environment questions instead.
+A [pi](https://github.com/earendil-works/pi-coding-agent) extension that keeps the coding agent away from [dotenvx](https://dotenvx.com) private-key files (`.env.keys`) — except for two sanctioned commands whose output is automatically redacted.
 
 ## Install
 
@@ -30,7 +30,7 @@ To install into a single project instead of globally, add `-l` (writes `.pi/sett
 pi install -l git:github.com/tianhuil/pi-dotenvx
 ```
 
-Confirm it loaded: start pi and check that the `dotenvx_info` tool is available, or run this repo's smoke test locally (see [Development](#development)).
+Confirm it loaded: ask the agent to run `cat .env.keys` — it should succeed with key values showing as `[redacted]` — or run this repo's smoke test locally (see [Development](#development)).
 
 ## How it works
 
@@ -38,47 +38,24 @@ Four layers, applied to every agent turn:
 
 | Layer | Trigger | Behavior |
 |---|---|---|
-| Tool gate | `read` / `write` / `edit` on a protected path | Blocked. Path is canonicalized (`~` expansion, cwd resolution, realpath through symlinks, nearest-existing-ancestor fallback) so symlink and missing-child evasions fail. |
-| Bash gate | `bash` command referencing a protected name | Blocked, with a reason pointing at `dotenvx_info`. Advisory text scan — see [Security model](#security-model). |
-| Redaction | any `tool_result` containing key material | `key_…` tokens (40+ base64 chars) and `DOTENV_PRIVATE_KEY_*=<value>` assignments are replaced with `[redacted:dotenvx-key]`. Backstop, not a boundary. |
-| Guidance | each agent start | System prompt gains: `.env.keys` is off-limits; use `dotenvx_info`. |
+| Tool gate | `read` / `write` / `edit` on a protected path | Blocked, with a reason pointing at the sanctioned commands. Path is canonicalized (`~` expansion, cwd resolution, realpath through symlinks, nearest-existing-ancestor fallback) so symlink and missing-child evasions fail. |
+| Bash gate | `bash` command referencing a protected name | Blocked — **except** the two sanctioned commands below. Advisory text scan — see [Security model](#security-model). |
+| Redaction | any `tool_result` containing key material | `key_…` tokens (40+ base64 chars) and `DOTENV_PRIVATE_KEY_*=<value>` assignments are replaced with `[redacted]`. This is what makes the sanctioned commands safe. |
+| Guidance | each agent start | System prompt gains: `.env.keys` is off-limits; use `cat .env.keys` / `ls .env.keys`. |
 
-The one allowed path is the `dotenvx_info` tool (zero parameters, read-only). It reports, per project directory:
+### Sanctioned commands
 
-- `.env*` environment files present, each with its public `APP_ENV` value and whether it contains encrypted entries
-- `.env.keys`: existence, size, mtime, entry count, and entry **names** (`DOTENV_PRIVATE_KEY_DEVELOPMENT`, …)
-- whether `~/.dotenvx/.env.keys` exists
+Exactly two commands pass the bash gate — matched after trimming, with no extra arguments allowed:
 
-It never returns key values or environment secret values. Sample output for a typical project:
-
-```json
-{
-  "cwd": "/Users/you/my-app",
-  "environments": [
-    {
-      "name": ".env.development",
-      "appEnv": "development",
-      "hasEncryptedEntries": false
-    },
-    {
-      "name": ".env.production",
-      "appEnv": "production",
-      "hasEncryptedEntries": true
-    }
-  ],
-  "privateKeysFile": {
-    "name": ".env.keys",
-    "size": 209,
-    "modifiedAt": "2026-09-28T18:44:01.517Z",
-    "count": 2,
-    "entryNames": [
-      "DOTENV_PRIVATE_KEY_DEVELOPMENT",
-      "DOTENV_PRIVATE_KEY_PRODUCTION"
-    ]
-  },
-  "dotenvxHomeKeysExists": false
-}
+```sh
+cat .env.keys
+ls .env.keys
 ```
+
+- `ls .env.keys` tells the agent whether the file exists at the repo root.
+- `cat .env.keys` returns the verbatim file with every key value replaced by `[redacted]`; when the file is missing, cat's natural `No such file or directory` answers the question. Key **names** survive (`DOTENV_PRIVATE_KEY_DEVELOPMENT`, …) — names are metadata, not secrets.
+
+Because redaction is applied to all tool results anyway, these commands need no special output path — the backstop *is* the feature.
 
 ### Configuration
 
@@ -100,19 +77,19 @@ Defaults: `protectedNames: [".env.keys"]`, `protectedDirs: ["~/.dotenvx", "~/.do
 
 ```text
 src/index.ts   extension factory: tool_call gate, tool_result redaction,
-               dotenvx_info registration, guidance injection, config merge
-src/guard.ts   pure logic: path canonicalization + matching, bash text scan,
-               secret redaction, safe-info collection (no pi imports)
-test/unit/     bun:test unit tests for guard.ts (evasion, redaction, leakage)
+               sanctioned-command pass-through, guidance injection, config merge
+src/guard.ts   pure logic: path canonicalization + matching, sanctioned-command
+               check, bash text scan, secret redaction (no pi imports)
+test/unit/     bun:test unit tests for guard.ts (evasion, sanctions, redaction)
 test/e2e/      smoke test driving the real pi CLI in rpc mode (no API key):
-               asserts clean load + runtime dotenvx_info registration
+               asserts clean load + live gate/redaction behavior
 ```
 
 ## Security model
 
 Honest threat model:
 
-- **Hard within pi:** `read`/`write`/`edit` cannot touch protected paths, including via symlinks or not-yet-existing targets under symlinked directories. Tool results are scrubbed of key material.
+- **Hard within pi:** `read`/`write`/`edit` cannot touch protected paths, including via symlinks or not-yet-existing targets under symlinked directories. Sanctioned commands carry no secret values because redaction scrubs every tool result.
 - **Advisory:** the bash gate pattern-matches command text. It catches obvious references and glob shapes (`.env*keys`, `.?nv.keys`) but is bypassable by renames, encodings, or interpreters. It is a tripwire, not a boundary.
 - **Robust follow-up (see TODO):** wrap bash in an OS sandbox (sandbox-exec / bubblewrap) with `denyRead` on key files for a kernel-enforced guarantee.
 - **Out of scope:** keys already committed to Git history (rotate them), keys read before this extension was installed (purge old session transcripts), or exfiltration of already-decrypted values.
@@ -134,8 +111,8 @@ CI runs all three on every push and pull request.
 
 - [ ] OS-level sandbox for bash commands (`@anthropic-ai/sandbox-runtime`, `denyRead` on `.env.keys`) to replace the advisory text scan with a kernel-enforced boundary
 - [ ] Block subagent-spawned children that bypass the extension's tool gate (verify coverage of pi-subagents child tool calls)
-- [ ] Config option to protect additional dotenvx-adjacent secrets (e.g. `.env.vault` keys) by default
-- [ ] Publish to npm as `pi-dotenvx` for `npm:` installs alongside `git:`
+- [ ] Config option to sanction additional read-only commands (e.g. `ls ~/.dotenvx`)
+- [ ] Publish to npm for `npm:` installs alongside `git:`
 - [ ] Support `PI_BIN`-pinned e2e matrix across pi versions in CI
 
 ## License
