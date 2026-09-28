@@ -49,7 +49,36 @@ The one allowed path is the `dotenvx_info` tool (zero parameters, read-only). It
 - `.env.keys`: existence, size, mtime, entry count, and entry **names** (`DOTENV_PRIVATE_KEY_DEVELOPMENT`, …)
 - whether `~/.dotenvx/.env.keys` exists
 
-It never returns key values or environment secret values.
+It never returns key values or environment secret values. Sample output for a typical project:
+
+```json
+{
+  "cwd": "/Users/you/my-app",
+  "environments": [
+    {
+      "name": ".env.development",
+      "appEnv": "development",
+      "hasEncryptedEntries": false
+    },
+    {
+      "name": ".env.production",
+      "appEnv": "production",
+      "hasEncryptedEntries": true
+    }
+  ],
+  "privateKeysFile": {
+    "name": ".env.keys",
+    "size": 209,
+    "modifiedAt": "2026-09-28T18:44:01.517Z",
+    "count": 2,
+    "entryNames": [
+      "DOTENV_PRIVATE_KEY_DEVELOPMENT",
+      "DOTENV_PRIVATE_KEY_PRODUCTION"
+    ]
+  },
+  "dotenvxHomeKeysExists": false
+}
+```
 
 ### Configuration
 
