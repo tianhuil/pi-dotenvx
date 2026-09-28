@@ -74,13 +74,9 @@ Plain environment files (`.env`, `.env.development`, `.env.test`, `.env.producti
 
 ### Conditional activation
 
-The guard is dormant unless the project actually uses dotenvx. Detection runs at session start and is re-checked cheaply each turn, so a repo that gains `.env.keys` mid-session wakes the guard immediately. Telltale signs (any one activates):
+The guard silently no-ops unless `.env.keys` exists at the repo root — the single telltale sign of dotenvx usage. Detection runs at session start and is re-checked each turn (one `stat`), so a repo that gains `.env.keys` mid-session wakes the guard immediately. Other dotenvx hints (package.json dependencies, `encrypted:` values) deliberately do **not** activate it; a project without `.env.keys` has nothing to protect.
 
-1. `.env.keys` exists at the repo root
-2. `package.json` references dotenvx — a dependency (`dotenvx`, `@dotenvx/dotenvx`, any `@dotenvx/*`) or any mention in scripts/overrides
-3. An `.env.*` file contains dotenvx-encrypted values (`KEY="encrypted:…"`)
-
-Fail direction is safe: any sign → active. Override in config with `"enabled": true` (always on) or `"enabled": false` (off):
+Fail direction is safe: file present → active. Override in config with `"enabled": true` (always on) or `"enabled": false` (off):
 
 ```json
 { "enabled": "auto" }

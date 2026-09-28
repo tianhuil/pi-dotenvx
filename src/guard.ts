@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
@@ -110,54 +110,14 @@ export function redactSecrets(text: string): string {
 }
 
 /**
- * Telltale signs that a project actually uses dotenvx. Any single sign
- * activates the guard (fail-safe direction). Cheap: one directory read,
- * one package.json parse, bounded reads of small .env* files.
+ * Single telltale sign: the dotenvx private-key file at the repo root.
+ * The guard silently no-ops in any project without it. Re-checked each
+ * turn (one stat) so a repo gaining .env.keys mid-session wakes the guard.
  */
 export async function detectDotenvxUsage(cwd: string): Promise<boolean> {
-  const root = path.resolve(cwd);
-
-  // 1. Project private-key file.
   try {
-    const info = await stat(path.join(root, ".env.keys"));
-    if (info.isFile()) return true;
+    return (await stat(path.resolve(cwd, ".env.keys"))).isFile();
   } catch {
-    // absent
+    return false;
   }
-
-  // 2. package.json references dotenvx (dependency or scripts).
-  try {
-    const raw = await readFile(path.join(root, "package.json"), "utf8");
-    const pkg = JSON.parse(raw) as Record<string, unknown>;
-    const depSections = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies"] as const;
-    for (const section of depSections) {
-      const deps = pkg[section];
-      if (typeof deps === "object" && deps !== null) {
-        for (const name of Object.keys(deps)) {
-          if (name === "dotenvx" || name === "@dotenvx/dotenvx" || name.startsWith("@dotenvx/")) return true;
-        }
-      }
-    }
-    if (/dotenvx/.test(raw)) return true; // scripts, overrides, packageManager, etc.
-  } catch {
-    // no package.json or unparsable
-  }
-
-  // 3. dotenvx-encrypted values in .env* files ("encrypted:..." format).
-  try {
-    for (const entry of await readdir(root, { withFileTypes: true })) {
-      if (!entry.isFile() || !/^\.env\.[^.]+$/i.test(entry.name) || entry.name.endsWith(".keys")) continue;
-      let contents: string;
-      try {
-        contents = await readFile(path.join(root, entry.name), "utf8");
-      } catch {
-        continue;
-      }
-      if (/=\s*["']?encrypted:/.test(contents.slice(0, 65_536))) return true;
-    }
-  } catch {
-    // unreadable directory
-  }
-
-  return false;
 }

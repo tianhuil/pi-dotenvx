@@ -1,6 +1,6 @@
 {
   "name": "pi-dotenvx",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "pi extension guarding dotenvx private-key files (.env.keys): dormant unless dotenvx detected, sanctions redacted cat/ls",
   "type": "module",
   "private": true,
