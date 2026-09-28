@@ -45,6 +45,7 @@ const GUIDANCE = [
   ".env.keys holds dotenvx private decryption keys and is off-limits.",
   'The ONLY sanctioned commands are `cat .env.keys` and `ls .env.keys` (exact, no extra arguments) — their output is automatically redacted of key values.',
   "Never read, print, copy, move, or encode that file any other way.",
+  "Plain environment files (.env, .env.development, .env.test, .env.production, ...) are safe to read normally; only .env.keys is protected.",
 ].join(" ");
 
 export default function (pi: ExtensionAPI) {

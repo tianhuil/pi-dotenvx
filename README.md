@@ -41,7 +41,7 @@ Four layers, applied to every agent turn:
 | Tool gate | `read` / `write` / `edit` on a protected path | Blocked, with a reason pointing at the sanctioned commands. Path is canonicalized (`~` expansion, cwd resolution, realpath through symlinks, nearest-existing-ancestor fallback) so symlink and missing-child evasions fail. |
 | Bash gate | `bash` command referencing a protected name | Blocked — **except** the two sanctioned commands below. Advisory text scan — see [Security model](#security-model). |
 | Redaction | any `tool_result` containing key material | `key_…` tokens (40+ base64 chars) and `DOTENV_PRIVATE_KEY_*=<value>` assignments are replaced with `[redacted]`. This is what makes the sanctioned commands safe. |
-| Guidance | each agent start | System prompt gains: `.env.keys` is off-limits; use `cat .env.keys` / `ls .env.keys`. |
+| Guidance | each agent start | System prompt gains: `.env.keys` is off-limits; use `cat .env.keys` / `ls .env.keys`; plain `.env*` files are safe to read normally. |
 
 ### Sanctioned commands
 
@@ -56,6 +56,21 @@ ls .env.keys
 - `cat .env.keys` returns the verbatim file with every key value replaced by `[redacted]`; when the file is missing, cat's natural `No such file or directory` answers the question. Key **names** survive (`DOTENV_PRIVATE_KEY_DEVELOPMENT`, …) — names are metadata, not secrets.
 
 Because redaction is applied to all tool results anyway, these commands need no special output path — the backstop *is* the feature.
+
+Sample redacted session:
+
+```sh
+$ ls .env.keys
+.env.keys
+$ cat .env.keys
+# .env.keys
+DOTENV_PRIVATE_KEY_DEVELOPMENT=[redacted]
+DOTENV_PRIVATE_KEY_PRODUCTION=[redacted]
+$ cat .env.keys   # in a repo without the file
+cat: .env.keys: No such file or directory
+```
+
+Plain environment files (`.env`, `.env.development`, `.env.test`, `.env.production`, …) are not protected — the agent reads them normally. Only `.env.keys` (and configured dirs like `~/.dotenvx`) is guarded.
 
 ### Configuration
 
