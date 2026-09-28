@@ -1,0 +1,30 @@
+{
+  "name": "pi-dotenvx",
+  "version": "0.1.0",
+  "description": "pi extension that keeps the agent away from dotenvx private-key files (.env.keys) and exposes safe environment metadata only",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "packageManager": "bun@1.3.14",
+  "keywords": [
+    "pi-package",
+    "pi",
+    "pi-extension",
+    "dotenvx",
+    "security"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test test/unit/",
+    "test:unit": "bun test test/unit/",
+    "test:e2e": "bun run test/e2e/smoke.ts"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.84.1",
+    "@types/bun": "latest",
+    "typescript": "^5"
+  }
+}
