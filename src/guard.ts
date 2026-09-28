@@ -110,14 +110,20 @@ export function redactSecrets(text: string): string {
 }
 
 /**
- * Single telltale sign: the dotenvx private-key file at the repo root.
- * The guard silently no-ops in any project without it. Re-checked each
- * turn (one stat) so a repo gaining .env.keys mid-session wakes the guard.
+ * Single telltale sign: a protected key file at the repo root. Defaults to
+ * .env.keys, but honors the merged protectedNames config so custom names
+ * (e.g. secrets.keys) also activate. The guard silently no-ops in any
+ * project without such a file. Re-checked each turn (one stat per name) so
+ * a repo gaining a key file mid-session wakes the guard.
  */
-export async function detectDotenvxUsage(cwd: string): Promise<boolean> {
-  try {
-    return (await stat(path.resolve(cwd, ".env.keys"))).isFile();
-  } catch {
-    return false;
+export async function detectDotenvxUsage(cwd: string, protectedNames: string[] = DEFAULT_PROTECTED_NAMES): Promise<boolean> {
+  const root = path.resolve(cwd);
+  for (const name of protectedNames) {
+    try {
+      if ((await stat(path.join(root, name))).isFile()) return true;
+    } catch {
+      // absent
+    }
   }
+  return false;
 }

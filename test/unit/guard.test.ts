@@ -186,3 +186,10 @@ describe("detectDotenvxUsage", () => {
     expect(await detectDotenvxUsage(cwd)).toBe(true);
   });
 });
+
+  test("custom protectedNames activate detection", async () => {
+    const cwd = await makeTempDir();
+    await writeFile(path.join(cwd, "secrets.keys"), "DOTENV_PRIVATE_KEY_DEVELOPMENT=x\n");
+    expect(await detectDotenvxUsage(cwd)).toBe(false);
+    expect(await detectDotenvxUsage(cwd, [".env.keys", "secrets.keys"])).toBe(true);
+  });

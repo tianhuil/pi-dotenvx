@@ -63,10 +63,10 @@ export default function (pi: ExtensionAPI) {
     if (config.enabled === true) return true;
     if (config.enabled === false) return false;
     if (activeByCwd.has(ctx.cwd)) {
-      void detectDotenvxUsage(ctx.cwd).then((detected) => activeByCwd.set(ctx.cwd, detected));
+      void detectDotenvxUsage(ctx.cwd, config.protectedNames).then((detected) => activeByCwd.set(ctx.cwd, detected));
       return activeByCwd.get(ctx.cwd) ?? false;
     }
-    const detected = await detectDotenvxUsage(ctx.cwd);
+    const detected = await detectDotenvxUsage(ctx.cwd, config.protectedNames);
     activeByCwd.set(ctx.cwd, detected);
     return detected;
   }

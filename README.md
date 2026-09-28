@@ -74,7 +74,7 @@ Plain environment files (`.env`, `.env.development`, `.env.test`, `.env.producti
 
 ### Conditional activation
 
-The guard silently no-ops unless `.env.keys` exists at the repo root — the single telltale sign of dotenvx usage. Detection runs at session start and is re-checked each turn (one `stat`), so a repo that gains `.env.keys` mid-session wakes the guard immediately. Other dotenvx hints (package.json dependencies, `encrypted:` values) deliberately do **not** activate it; a project without `.env.keys` has nothing to protect.
+The guard silently no-ops unless a protected key file exists at the repo root — the single telltale sign of dotenvx usage. This honors the merged `protectedNames` config, so a custom name like `secrets.keys` activates it too; the default is `.env.keys`. Detection runs at session start and is re-checked each turn (one `stat` per name), so a repo that gains a key file mid-session wakes the guard immediately. Other dotenvx hints (package.json dependencies, `encrypted:` values) deliberately do **not** activate it; a project without `.env.keys` has nothing to protect.
 
 Fail direction is safe: file present → active. Override in config with `"enabled": true` (always on) or `"enabled": false` (off):
 
